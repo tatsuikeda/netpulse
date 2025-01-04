@@ -13,6 +13,7 @@ A comprehensive network diagnostics and speed testing tool that helps you analyz
 - **Comprehensive Reporting**:
   - Detailed performance metrics
   - Visual analysis with charts and graphs
+  - Markdown reports with full analysis
   - JSON and CSV exports
 - **Real-time Monitoring**:
   - Success rate tracking
@@ -61,12 +62,23 @@ The tool will:
 3. Generate detailed reports and visualizations
 4. Save results to the specified directory
 
-## Output
+## Output Files
 
-- **Console Output**: Real-time progress and summary statistics
-- **CSV Files**: Detailed test results for further analysis
-- **JSON Files**: Comprehensive data including all metrics
-- **PNG Files**: Visual representations of test results
+NetPulse generates comprehensive reports and data files in the `results` directory:
+
+- **Markdown Report** (`report_<timestamp>.md`):
+  - Complete test results in readable format
+  - Network diagnostics summary
+  - Speed test analysis
+  - Links to visualizations and raw data
+- **Visualization** (`network_analysis_<timestamp>.png`):
+  - Load time distribution plots
+  - Time series analysis
+  - Size vs. load time correlation
+  - Success rate visualization
+- **Raw Data**:
+  - CSV file (`results_<timestamp>.csv`): Detailed test results
+  - JSON file (`results_<timestamp>.json`): Complete data including diagnostics
 
 ## License
 

@@ -311,10 +311,86 @@ class NetworkSpeedTest:
         # Save results
         if os.getenv('SAVE_RESULTS', 'true').lower() == 'true':
             self.save_results(df)
+            self.save_markdown_report(df)
+
+    def save_markdown_report(self, df):
+        """Save a markdown report with all test results."""
+        timestamp = int(datetime.now().timestamp())
+        report_path = self.results_dir / f'report_{timestamp}.md'
+        
+        with open(report_path, 'w') as f:
+            # Title and timestamp
+            f.write(f'# NetPulse Network Analysis Report\n\n')
+            f.write(f'Generated on: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n\n')
+            
+            # Network Diagnostics Section
+            f.write('## Network Diagnostics\n\n')
+            
+            # DNS Resolution Times
+            f.write('### DNS Resolution Times\n\n')
+            f.write('| Domain | Resolution Time (s) |\n')
+            f.write('|--------|-------------------|\n')
+            for domain, time in self.diagnostics.dns_times.items():
+                f.write(f'| {domain} | {time:.3f} |\n')
+            f.write('\n')
+            
+            # Ping Statistics
+            f.write('### Ping Statistics\n\n')
+            f.write('| Domain | Min (ms) | Avg (ms) | Max (ms) | Std Dev |\n')
+            f.write('|--------|-----------|-----------|-----------|----------|\n')
+            for domain, stats in self.diagnostics.ping_results.items():
+                if stats:
+                    f.write(f'| {domain} | {stats["min"]:.1f} | {stats["avg"]:.1f} | {stats["max"]:.1f} | {stats["stddev"]:.1f} |\n')
+                else:
+                    f.write(f'| {domain} | Failed | Failed | Failed | Failed |\n')
+            f.write('\n')
+            
+            # MTU Test Results
+            f.write('### MTU Test Results\n\n')
+            f.write('| Domain | 1500 bytes | 1400 bytes | 1200 bytes |\n')
+            f.write('|--------|------------|------------|------------|\n')
+            for domain, sizes in self.diagnostics.mtu_results.items():
+                f.write(f'| {domain} | {"✓" if sizes.get(1500) else "✗"} | {"✓" if sizes.get(1400) else "✗"} | {"✓" if sizes.get(1200) else "✗"} |\n')
+            f.write('\n')
+            
+            # Speed Test Results
+            f.write('## Speed Test Results\n\n')
+            
+            # Test Summary
+            f.write('### Test Summary\n\n')
+            f.write(f'- **Total Test Duration**: {self.end_time - self.start_time:.2f} seconds\n')
+            f.write(f'- **Total Requests**: {len(self.results)}\n')
+            f.write(f'- **Successful Requests**: {df["success"].sum()} ({df["success"].mean()*100:.1f}%)\n')
+            f.write(f'- **Average Time per Concurrent Batch**: {(self.end_time - self.start_time)/len(self.results)*self.concurrent_requests:.2f} seconds\n')
+            f.write(f'- **Requests per Second**: {len(self.results)/(self.end_time - self.start_time):.2f}\n')
+            total_mb = df['size'].sum() / (1024 * 1024)
+            f.write(f'- **Total Data Transferred**: {total_mb:.2f} MB\n')
+            f.write(f'- **Average Transfer Speed**: {total_mb/(self.end_time - self.start_time):.2f} MB/s\n\n')
+            
+            # Detailed Results Table
+            f.write('### Detailed Results\n\n')
+            f.write('| Website | Avg Load Time (s) | Min (s) | Max (s) | Std Dev | Success Rate | Avg Size (KB) |\n')
+            f.write('|---------|-------------------|----------|----------|----------|--------------|---------------|\n')
+            
+            for website in df['url'].unique():
+                site_data = df[df['url'] == website]
+                f.write(f"| {website} | {site_data['load_time'].mean():.3f} | "
+                       f"{site_data['load_time'].min():.3f} | {site_data['load_time'].max():.3f} | "
+                       f"{site_data['load_time'].std():.3f} | {site_data['success'].mean()*100:.1f}% | "
+                       f"{site_data['size'].mean()/1024:.1f} |\n")
+            
+            # Add reference to visualization files
+            f.write('\n## Visualizations\n\n')
+            f.write(f'![Network Analysis](network_analysis_{timestamp}.png)\n')
+            
+            # Add links to raw data
+            f.write('\n## Raw Data\n\n')
+            f.write(f'- [CSV Results](results_{timestamp}.csv)\n')
+            f.write(f'- [JSON Results](results_{timestamp}.json)\n')
 
     def save_results(self, df):
         """Save results to JSON and CSV files."""
-        timestamp = int(time.time())
+        timestamp = int(datetime.now().timestamp())
         df.to_csv(self.results_dir / f'results_{timestamp}.csv', index=False)
         
         # Convert numpy values to native Python types for JSON serialization
@@ -353,46 +429,63 @@ class NetworkSpeedTest:
 
     def generate_plots(self, df):
         """Generate visualization plots."""
-        plt.figure(figsize=(15, 10))
+        # Create figure with extra width for legend
+        fig = plt.figure(figsize=(18, 10))
+        
+        # Create GridSpec with more space for rotated labels
+        gs = fig.add_gridspec(2, 2, height_ratios=[1.2, 1], width_ratios=[1, 1.2],
+                            left=0.1, right=0.9, bottom=0.1, top=0.9,
+                            hspace=0.3, wspace=0.3)
         
         # Box plot of load times
-        ax1 = plt.subplot(2, 2, 1)
-        df.boxplot(column='load_time', by='url', rot=45)
-        plt.title('Load Time Distribution by Website')
-        plt.ylabel('Load Time (seconds)')
-        plt.xticks(fontsize=8)
+        ax1 = fig.add_subplot(gs[0, 0])
+        df.boxplot(column='load_time', by='url', ax=ax1, rot=45)
+        ax1.set_title('Load Time Distribution by Website', pad=20)
+        ax1.set_ylabel('Load Time (seconds)')
+        ax1.tick_params(axis='x', labelsize=8)
         
         # Time series plot
-        ax2 = plt.subplot(2, 2, 2)
+        ax2 = fig.add_subplot(gs[0, 1])
         for url in df['url'].unique():
             site_data = df[df['url'] == url]
-            plt.plot(range(len(site_data)), site_data['load_time'], 
-                    label=url.replace('https://', ''))
-        plt.title('Load Times Over Time')
-        plt.xlabel('Test Number')
-        plt.ylabel('Load Time (seconds)')
-        plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+            ax2.plot(range(len(site_data)), site_data['load_time'], 
+                    label=url.replace('https://', '').replace('www.', ''))
+        ax2.set_title('Load Times Over Time', pad=20)
+        ax2.set_xlabel('Test Number')
+        ax2.set_ylabel('Load Time (seconds)')
+        # Place legend outside the plot
+        ax2.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8, 
+                  borderaxespad=0., frameon=True)
         
         # Size vs Load Time scatter plot
-        ax3 = plt.subplot(2, 2, 3)
-        plt.scatter(df['size']/1024, df['load_time'])
-        plt.xlabel('Response Size (KB)')
-        plt.ylabel('Load Time (seconds)')
-        plt.title('Response Size vs Load Time')
+        ax3 = fig.add_subplot(gs[1, 0])
+        scatter = ax3.scatter(df['size']/1024, df['load_time'], alpha=0.6)
+        ax3.set_xlabel('Response Size (KB)')
+        ax3.set_ylabel('Load Time (seconds)')
+        ax3.set_title('Response Size vs Load Time')
+        ax3.grid(True, linestyle='--', alpha=0.7)
         
         # Success rate pie chart
-        ax4 = plt.subplot(2, 2, 4)
+        ax4 = fig.add_subplot(gs[1, 1])
         success_counts = df['success'].value_counts()
-        plt.pie(success_counts, 
-                labels=['Success', 'Failure'] if len(success_counts) > 1 else ['Success'],
-                autopct='%1.1f%%', 
-                colors=['green', 'red'] if len(success_counts) > 1 else ['green'])
-        plt.title('Request Success Rate')
+        wedges, texts, autotexts = ax4.pie(
+            success_counts, 
+            labels=['Success', 'Failure'] if len(success_counts) > 1 else ['Success'],
+            autopct='%1.1f%%', 
+            colors=['#2ecc71', '#e74c3c'] if len(success_counts) > 1 else ['#2ecc71'],
+            explode=[0.05] * len(success_counts),
+            shadow=True
+        )
+        ax4.set_title('Request Success Rate')
         
-        plt.tight_layout()
-        plt.savefig(self.results_dir / f'network_analysis_{int(time.time())}.png', 
-                   bbox_inches='tight', dpi=300)
-        plt.close()  # Close the figure to free memory
+        # Save with extra padding for the legend
+        plt.savefig(
+            self.results_dir / f'network_analysis_{int(datetime.now().timestamp())}.png',
+            bbox_inches='tight',
+            dpi=300,
+            pad_inches=0.5
+        )
+        plt.close(fig)  # Close the figure to free memory
 
 async def main():
     console.print("[bold green]Starting Network Speed Test[/bold green]")
